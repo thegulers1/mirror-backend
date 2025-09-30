@@ -213,7 +213,18 @@ io.on('connection', (socket) => {
           '-movflags', 'faststart',
           outPath,
         ];
-        execFile('ffmpeg', args, (err) => (err ? reject(err) : resolve()));
+        // ffmpeg çağrısını ve argümanlarını logla
+        console.log('ffmpeg run', { args });
+        execFile('ffmpeg', args, (err, stdout, stderr) => {
+          // ffmpeg çıktısını logla (hata durumunda teşhis kolaylığı için)
+          if (err) {
+            console.error('ffmpeg error', { message: err.message, code: err.code, signal: err.signal, stderr: String(stderr) });
+            reject(err);
+            return;
+          }
+          console.log('ffmpeg completed', { stdout: String(stdout).slice(0, 1000), stderr: String(stderr).slice(0, 1000) });
+          resolve();
+        });
       });
 
       // mp4'ü MinIO'ya yükle

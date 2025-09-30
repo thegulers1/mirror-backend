@@ -69,7 +69,7 @@
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' }, // arka kamera
-          audio: true
+          audio: true,
         });
         videoEl.srcObject = stream;
         statusEl.textContent = 'Durum: kamera hazır. Start bekleniyor 1 2 4...';
