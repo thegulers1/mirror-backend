@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mirror Moderasyon</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { margin:0; background:#0b0f15; color:#fff; font-family:sans-serif; }
+    .wrap { max-width:600px; margin:0 auto; padding:24px; display:flex; flex-direction:column; gap:16px; }
+    button { padding:14px 18px; font-size:18px; border-radius:12px; border:0; background:#1f6feb; color:#fff; }
+    .card { background:#121826; border-radius:16px; padding:16px; }
+    #qr { display:flex; justify-content:center; align-items:center; min-height:280px; }
+    .status { opacity:.9 }
+    input[type="number"] { width:120px; padding:8px; border-radius:8px; border:1px solid #334; background:#0b0f15; color:#fff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Moderasyon</h2>
+    <div class="card">
+      <div class="status" id="recStatus">Recorder: bağlanmadı</div>
+    </div>
+    <div class="card">
+      <label>Süre (sn): <input id="sec" type="number" min="3" max="60" value="15" /></label>
+      <button id="start">Start</button>
+      <div class="status" id="status">Hazır</div>
+    </div>
+    <div class="card">
+      <h3>QR Kodu</h3>
+      <div id="qr">Henüz video yok</div>
+      <div id="link" style="word-break:break-all;"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // Basit QR üretimi (kütüphane kullanmamak için Google Chart API)
+    function renderQR(el, url) {
+        // Önce alanı temizle
+        el.innerHTML = '';
+        // QR oluştur
+        new QRCode(el, {
+        text: url,
+        width: 280,
+        height: 280,
+        correctLevel: QRCode.CorrectLevel.M
+        });
+    }
+    const socket = io({ path: '/socket.io' });
+    const startBtn = document.getElementById('start');
+    const secInput = document.getElementById('sec');
+    const statusEl = document.getElementById('status');
+    const recStatusEl = document.getElementById('recStatus');
+    const qrEl = document.getElementById('qr');
+    const linkEl = document.getElementById('link');
+
+    socket.on('connect', () => {
+      socket.emit('register', 'moderator');
+    });
+
+    socket.on('recorder-status', ({ ready }) => {
+      recStatusEl.textContent = 'Recorder: ' + (ready ? 'hazır' : 'BAĞLI DEĞİL');
+    });
+
+    startBtn.addEventListener('click', () => {
+      const sec = Math.max(3, Math.min(60, +secInput.value || 15));
+      statusEl.textContent = `Start gönderildi (${sec}s)...`;
+      socket.emit('moderator-start', { eventId: 'mirror-istanbul-2025', durationMs: sec * 1000 });
+    });
+
+    // Video hazır olunca GET link gelir:
+    socket.on('video-ready', ({ key, getUrl }) => {
+      statusEl.textContent = 'Video hazır: ' + key;
+      linkEl.textContent = getUrl;
+      renderQR(qrEl, getUrl);
+    });
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-M0xY1c1/4m7Eo8p1dJ6Qm3+oQ0qj9gCkw2kGvHqY7rFQG6M2d0QWLy3rQw2gF9d2Z9sn2m7k1o8j7+fJXUq+4w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+</body>
+</html>
