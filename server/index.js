@@ -45,9 +45,8 @@ app.get('/health', (_, res) => res.send('ok'));
 // --------- Pre-signed PUT ----------
 app.post('/api/presign/put', async (req, res) => {
   try {
-    const eventId = (req.query.eventId || 'default-event').toString();
     const ext = (req.query.ext || 'webm').toString();
-    const key = `${eventId}/${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${ext}`;
+    const key = `${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${ext}`;
     const expires = 60 * 5;
 
     const putUrl = await new Promise((resolve, reject) => {
@@ -111,107 +110,19 @@ app.get('/dl', async (req, res) => {
   if (!key) return res.status(400).send('key parametresi gerekli');
 
   try {
-    const viewUrl = await new Promise((resolve, reject) => {
-      minioClient.presignedUrl('GET', BUCKET, key, 3600, (err, url) =>
-        err ? reject(err) : resolve(url)
-      );
-    });
+    const viewUrl = `https://mirror-draw.metasoftco.com/mirrorvideo/${encodeURIComponent(key)}`
 
     const proxyUrl = `${process.env.PUBLIC_BASE_URL || 'https://mirror-draw.metasoftco.com'}/download?key=${encodeURIComponent(key)}`;
 
-    res.send(`<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Videon Hazır</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root{ color-scheme:dark }
-    body{ background:#0b0f15; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; text-align:center; padding:24px }
-    video{ max-width:100%; border-radius:12px; margin:18px 0 }
-    .btn{ display:inline-block; margin:8px 6px; padding:14px 18px; font-size:18px; border-radius:12px; border:0; background:#1f6feb; color:#fff; text-decoration:none }
-    .btn.secondary{ background:#263042 }
-    .warn{ background:#3b2430; border:1px solid #a24a6a; padding:12px; border-radius:12px; margin:10px 0; display:none }
-    .muted{ opacity:.85; font-size:14px; line-height:1.4; max-width:720px; margin:0 auto }
-  </style>
-</head>
-<body>
-  <h2>Videon Hazır 🎉</h2>
-
-  <!-- iOS in-app browser uyarısı -->
-  <div id="iabWarning" class="warn">
-    Uygulama içi tarayıcıdasın. <b>Safari’de aç</b> butonuna bas; ardından paylaş menüsünden <b>“Videoyu Kaydet”</b> çıkacaktır.
-    <div style="margin-top:8px;">
-      <a id="openInSafari" class="btn">Safari’de Aç</a>
-    </div>
-  </div>
-
-  <video id="vid" src="{{VIEW_URL}}" controls playsinline></video>
-
-  <div>
-    <button class="btn" id="saveGallery">📲 iPhone: Galeriye Kaydet</button>
-    <a class="btn secondary" id="downloadFiles" href="{{PROXY_URL}}" rel="noopener">📥 Dosyalara İndir</a>
-    <a class="btn secondary" id="openPlayer" href="{{VIEW_URL}}" target="_blank" rel="noopener">▶️ Oynat & Uzun Bas</a>
-  </div>
-
-  <p class="muted" style="margin-top:10px">
-    iPhone öneri: <b>Galeriye Kaydet</b>. Olmazsa <b>Safari’de Aç</b> → oynatıcıda uzun bas → <b>“Videoyu Kaydet”</b>.
-  </p>
-
-  <script>
-  (async function(){
-    // server tarafında bu placeholder’ları dolduruyorsun (send içinde replace edebilirsin):
-    const viewUrl  = "{{VIEW_URL}}";
-    const proxyUrl = "{{PROXY_URL}}";
-
-    const ua = navigator.userAgent || "";
-    const isIOS = /iPhone|iPad|iPod/i.test(ua);
-
-    // In-app browser tespiti (Instagram/FB/Twitter/Line/WeChat vs.)
-    const isInApp = /(FBAN|FBAV|FB_IAB|Instagram|Line|MicroMessenger|Twitter|OKApp|TikTok|CriOS\/[\d.]+ Mobile)/i.test(ua);
-
-    // Uyarı kutusunu göster ve Safari'de aç butonuna viewUrl ver
-    const warn = document.getElementById('iabWarning');
-    const openInSafari = document.getElementById('openInSafari');
-    if (isIOS && isInApp) {
-      warn.style.display = 'block';
-      openInSafari.onclick = () => { window.location.href = viewUrl; };
-    }
-
-    // “Dosyalara İndir” linki (proxy) — iOS'ta indirme diyalogu açar
-    document.getElementById('downloadFiles').href = proxyUrl;
-
-    // “Oynat & Uzun Bas” — her zaman çalışır
-    document.getElementById('openPlayer').href = viewUrl;
-
-    // “Galeriye Kaydet” — Web Share Level 2 (files) destekliyse Photos’a kaydet seçeneği gelir
-    const saveBtn = document.getElementById('saveGallery');
-    if (!isIOS) saveBtn.textContent = "📤 Paylaş (MP4)";
-
-    async function saveToGallery(){
-      try {
-        // MinIO’dan MP4’ü blob olarak çek
-        const r = await fetch(viewUrl, { mode:'cors' });
-        if (!r.ok) throw new Error('fetch failed: '+r.status);
-        const blob = await r.blob();
-        const file = new File([blob], 'mirror-video.mp4', { type: 'video/mp4' });
-
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: 'Mirror Video', text: 'Videomu kaydet' });
-          return;
-        }
-        // Share yoksa en garantili yol: oynatıcıya gönder (uzun bas → Videoyu Kaydet)
-        window.location.href = viewUrl;
-      } catch (e) {
-        console.log('share fallback', e);
-        window.location.href = viewUrl;
-      }
-    }
-    saveBtn.addEventListener('click', saveToGallery);
-  })();
-  </script>
-</body>
-</html>`);
+    // HTML template'ine runtime değerleri enjekte et
+    // Not: Basit string replace ile placeholder'lar doldurulur
+    const tplPath = path.join(__dirname, 'views', 'dl.html');
+    const tpl = fs.readFileSync(tplPath, 'utf8');
+    const html = tpl
+      .replaceAll('{{VIEW_URL}}', viewUrl)
+      .replaceAll('{{PROXY_URL}}', proxyUrl);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
   } catch (e) {
     console.error('DL route error', e);
     res.status(500).send('Video linki alınamadı');
