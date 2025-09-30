@@ -167,12 +167,13 @@ function presignPut(key, expiresSec = 300) {
     minioClient.presignedUrl('PUT', BUCKET, key, expiresSec, (err, url) => err ? reject(err) : resolve(url));
   });
 }
-async function downloadToTemp(url, ext) {
+async function downloadToTemp(url, ext = '') {
   const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'mirror-')) + (ext || '');
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('download failed');
-  const file = fs.createWriteStream(dst);
-  await new Promise((res, rej) => { r.body.pipe(file); r.body.on('error', rej); file.on('finish', res); });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download failed: ${res.status} ${res.statusText}`);
+  
+  const buffer = Buffer.from(await res.arrayBuffer());
+  fs.writeFileSync(dst, buffer);
   return dst;
 }
 async function uploadFromFile(putUrl, filePath, contentType) {
