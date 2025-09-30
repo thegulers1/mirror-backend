@@ -62,15 +62,6 @@
 <body>
     <h2>Videon Hazır 🎉</h2>
 
-    <!-- iOS in-app browser uyarısı -->
-    <div id="iabWarning" class="warn">
-        Uygulama içi tarayıcıdasın. <b>Safari’de aç</b> butonuna bas; ardından paylaş menüsünden <b>“Videoyu Kaydet”</b>
-        çıkacaktır.
-        <div style="margin-top:8px;">
-            <a id="openInSafari" class="btn">Safari’de Aç</a>
-        </div>
-    </div>
-
     <video id="vid" src="{{VIEW_URL}}" controls playsinline></video>
 
     <div>
@@ -93,17 +84,6 @@
 
             const ua = navigator.userAgent || "";
             const isIOS = /iPhone|iPad|iPod/i.test(ua);
-
-            // In-app browser tespiti (Instagram/FB/Twitter/Line/WeChat vs.)
-            const isInApp = /(FBAN|FBAV|FB_IAB|Instagram|Line|MicroMessenger|Twitter|OKApp|TikTok|CriOS\/[\d.]+ Mobile)/i.test(ua);
-
-            // Uyarı kutusunu göster ve Safari'de aç butonuna viewUrl ver
-            const warn = document.getElementById('iabWarning');
-            const openInSafari = document.getElementById('openInSafari');
-            if (isIOS && isInApp) {
-                warn.style.display = 'block';
-                openInSafari.onclick = () => { window.location.href = viewUrl; };
-            }
 
             // “Dosyalara İndir” linki (proxy) — iOS'ta indirme diyalogu açar
             document.getElementById('downloadFiles').href = proxyUrl;
