@@ -214,12 +214,10 @@ io.on('connection', (socket) => {
         }
         const args = [
           '-y',
-          '-i', srcPath,                 // 0: video
-          '-loop', '1', '-i', framePath, // 1: PNG
+          '-noautorotate',              // <-- ekle
+          '-i', srcPath,                // 0: video
+          '-loop', '1', '-i', framePath,// 1: PNG
           '-filter_complex',
-          // 1) Videoyu çevirip RGBA'ya çevir
-          // 2) PNG'yi videonun boyutuna göre ölçekle ve RGBA yap
-          // 3) Overlay uygula
           '[0:v]hflip,format=rgba[base];' +
           '[1:v][base]scale2ref=flags=lanczos[fg][base2];' +
           '[fg]format=rgba[fg2];' +

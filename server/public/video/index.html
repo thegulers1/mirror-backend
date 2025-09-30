@@ -45,7 +45,7 @@
 <body>
   <div class="wrap">
     <h2>Kamera</h2>
-    <video id="preview" playsinline autoplay muted></video>
+    <video id="preview" style="display: none;" playsinline autoplay muted></video>
     <button id="init">Kamerayı Hazırla</button>
     <div class="status" id="status">Durum: bekleniyor</div>
   </div>
@@ -62,32 +62,40 @@
     let chunks = [];
     let durationMsDefault = 15000; // 15 sn
 
+    let mimeType;
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported('video/mp4')) {
+      mimeType = 'video/mp4';
+    } else if (window.MediaRecorder && MediaRecorder.isTypeSupported('video/webm')) {
+      mimeType = 'video/webm';
+    } else {
+      mimeType = ''; // tarayıcının varsayılanına bırak
+    }
+
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { exact: 1280 },
+        height: { exact: 720 },
+      },
+      audio: true
+    };
+
     socket.on('connect', () => {
       socket.emit('register', 'recorder');
     });
 
     initBtn.addEventListener('click', async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'environment', // arka kamera
-            width: { ideal: 720 },
-            height: { ideal: 1280 },
-            aspectRatio: { ideal: 9 / 16 }
-          },
-          audio: true,
-        });
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        
         // yorum: Cihaz destekliyorsa 720x1280 zorlamayı dene
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack?.applyConstraints) {
           try {
-            await videoTrack.applyConstraints({
-              width: { ideal: 720 },
-              height: { ideal: 1280 },
-              aspectRatio: { ideal: 9 / 16 }
-            });
-          } catch {}
+            await videoTrack.applyConstraints(constraints);
+          } catch { }
         }
+        videoEl.style.display = 'block';
         videoEl.srcObject = stream;
         statusEl.textContent = 'Durum: kamera hazır. Start bekleniyor 1 2 4...';
         initBtn.style.display = 'none';
@@ -105,11 +113,11 @@
       statusEl.textContent = 'Kayıt başladı (' + Math.round(duration / 1000) + ' sn)';
 
       chunks = [];
-      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      recorder = new MediaRecorder(stream, { mimeType: mimeType });
       recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       recorder.onstop = async () => {
         statusEl.textContent = 'Kayıt bitti. Yükleniyor...';
-        const blob = new Blob(chunks, { type: 'video/webm' });
+        const blob = new Blob(chunks, { type: mimeType });
 
         // Sunucudan PUT pre-signed URL al
         const resp = await fetch('/api/presign/put', {
@@ -120,7 +128,7 @@
         // MinIO'ya yükle (Content-Type şart)
         await fetch(putUrl, {
           method: 'PUT',
-          headers: { 'Content-Type': 'video/webm' },
+          headers: { 'Content-Type': mimeType },
           body: blob
         });
 
