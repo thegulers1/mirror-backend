@@ -205,26 +205,26 @@ io.on("connection", (socket) => {
 				const args = [
           '-y',
           '-noautorotate',
-          '-i', srcPath,                    // 0:v (+0:a?)
-          '-framerate', '60', '-loop', '1', // önemli
-          '-i', framePath,                  // 1:v PNG
+          '-i', srcPath,             // 0: video (webm)
+          '-i', framePath,           // 1: PNG (LOOP YOK)
           '-filter_complex',
           [
             '[0:v]hflip,format=rgba[base]',
+            // PNG'yi base'e göre ölçekle
             '[1:v][base]scale2ref=flags=lanczos[fg][base2]',
             '[fg]format=rgba[fg2]',
-            '[base2][fg2]overlay=shortest=1:eof_action=pass:x=0:y=0[out]',
+            // PNG tek kare => overlay PNG'nin son karesini tekrar etsin + kısa olan bitince dursun
+            '[base2][fg2]overlay=x=0:y=0:repeatlast=1:shortest=1[out]',
           ].join(';'),
           '-map', '[out]',
-          '-map', '0:a?',
+          '-map', '0:a?',            // varsa ses
           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
           '-c:a', 'aac', '-b:a', '128k',
           '-pix_fmt', 'yuv420p',
           '-movflags', 'faststart',
-          '-shortest',
+          '-shortest',               // muxer, en kısa stream’e göre dosyayı kapatsın
           outPath,
         ];
-        
 
 				console.log("ffmpeg spawn", { args });
 
