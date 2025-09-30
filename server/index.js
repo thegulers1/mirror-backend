@@ -207,10 +207,11 @@ io.on('connection', (socket) => {
       await new Promise((resolve, reject) => {
         const args = [
           '-y', '-i', srcPath,
-          '-vf', 'hflip',
+          // hflip + 9:16’e ölçekle/pad et (video ne gelirse gelsin sonuç 720x1280 olur)
+          '-vf',
+          "hflip,scale='if(gt(a,9/16),720,-2)':'if(gt(a,9/16),-2,1280)',pad=720:1280:(720-iw)/2:(1280-ih)/2",
           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-          '-pix_fmt', 'yuv420p',
-          '-movflags', 'faststart',
+          '-pix_fmt', 'yuv420p', '-movflags', 'faststart',
           outPath,
         ];
         execFile('ffmpeg', args, (err) => (err ? reject(err) : resolve()));

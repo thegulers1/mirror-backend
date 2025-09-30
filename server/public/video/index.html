@@ -175,19 +175,39 @@
     // ======== UI: Init & Test
     initBtn.addEventListener('click', async () => {
       try {
-        stream = await getCameraStream();
+        // 1) İlk deneme: portrait hedefi
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 720 },
+            height:{ ideal: 1280 },
+            aspectRatio: { ideal: 9/16 }, // 0.5625
+            frameRate: { ideal: 30 }
+          },
+          audio: true
+        });
+
+        // 2) Track seviyesinde daha sert zorla (Safari’de önemli)
+        const vTrack = stream.getVideoTracks()[0];
+        try {
+          await vTrack.applyConstraints({
+            width: { ideal: 720 },
+            height:{ ideal: 1280 },
+            aspectRatio: { ideal: 9/16 }
+          });
+        } catch (_) { /* bazı cihazlar reddedebilir, sorun değil */ }
+
         videoEl.srcObject = stream;
 
-        // Gerçek gelen çözünürlüğü göster (debug)
-        await sleep(50);
-        const vTrack = stream.getVideoTracks()[0];
-        const s = vTrack.getSettings && vTrack.getSettings();
+        // Debug: gelen gerçek çözünürlüğü yaz
+        const s = vTrack.getSettings?.();
         statusEl.textContent = `Kamera hazır • ${s?.width || '?'}×${s?.height || '?'} @${s?.frameRate || '?'} • Start bekleniyor`;
         initBtn.style.display = 'none';
       } catch (e) {
         statusEl.textContent = 'Kamera reddedildi/uyumsuz: ' + e.message;
       }
     });
+
 
     testBtn.addEventListener('click', () => startRecord(5000));
     stopBtn.addEventListener('click', () => { if (recorder && recorder.state === 'recording') recorder.stop(); });
