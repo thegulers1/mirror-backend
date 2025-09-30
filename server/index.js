@@ -110,7 +110,7 @@ app.get('/dl', async (req, res) => {
   if (!key) return res.status(400).send('key parametresi gerekli');
 
   try {
-    const viewUrl = `https://mirror-draw.metasoftco.com/mirrorvideo/${encodeURIComponent(key)}`
+    const viewUrl = `https://minio-api.metasoftco.com/mirrorvideo/${encodeURIComponent(key)}`
 
     const proxyUrl = `${process.env.PUBLIC_BASE_URL || 'https://mirror-draw.metasoftco.com'}/download?key=${encodeURIComponent(key)}`;
 
