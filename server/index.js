@@ -83,6 +83,104 @@ app.get('/api/presign/get', async (req, res) => {
   }
 });
 
+// --------- Proxy download (Dosyalara indir) ----------
+app.get('/download', async (req, res) => {
+  const key = req.query.key;
+  if (!key) return res.status(400).send('key gerekli');
+  try {
+    const srcUrl = await new Promise((resolve, reject) => {
+      minioClient.presignedUrl('GET', BUCKET, key, 3600, (err, url) =>
+        err ? reject(err) : resolve(url)
+      );
+    });
+    const r = await fetch(srcUrl);
+    if (!r.ok) return res.status(502).send('minio fetch failed');
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', 'attachment; filename="mirror-video.mp4"');
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.send(buf);
+  } catch (e) {
+    console.error('proxy download error', e);
+    res.status(500).send('download failed');
+  }
+});
+
+// --------- DL (landing) sayfası: iOS/Android/PC uyumlu ----------
+app.get('/dl', async (req, res) => {
+  const key = req.query.key;
+  if (!key) return res.status(400).send('key parametresi gerekli');
+
+  try {
+    const viewUrl = await new Promise((resolve, reject) => {
+      minioClient.presignedUrl('GET', BUCKET, key, 3600, (err, url) =>
+        err ? reject(err) : resolve(url)
+      );
+    });
+
+    const proxyUrl = `${process.env.PUBLIC_BASE_URL || 'https://mirror-draw.metasoftco.com'}/download?key=${encodeURIComponent(key)}`;
+
+    res.send(`<!doctype html><html><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Videon Hazır</title>
+<style>
+:root{color-scheme:dark}
+body{background:#0b0f15;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;text-align:center;padding:24px}
+video{max-width:100%;border-radius:12px;margin:18px 0}
+.btn{display:inline-block;margin:8px 6px;padding:14px 18px;font-size:18px;border-radius:12px;border:0;background:#1f6feb;color:#fff;text-decoration:none}
+.btn.secondary{background:#263042}
+.muted{opacity:.85;font-size:14px;line-height:1.4;max-width:720px;margin:0 auto}
+</style></head><body>
+<h2>Videon Hazır 🎉</h2>
+<video src="${viewUrl}" controls playsinline></video>
+
+<div>
+  <button class="btn" id="saveGallery">📲 iPhone: Galeriye Kaydet</button>
+  <a class="btn secondary" href="${proxyUrl}" rel="noopener">📥 Dosyalara İndir</a>
+  <a class="btn secondary" href="${viewUrl}" target="_blank" rel="noopener">▶️ Oynat & Uzun Bas</a>
+</div>
+
+<p class="muted" style="margin-top:10px">
+  iPhone için önerilen: <b>Galeriye Kaydet</b>.
+  Çalışmazsa “Oynat & Uzun Bas” ile paylaş menüsünden <b>Videoyu Kaydet</b>.
+</p>
+
+<script>
+(async function(){
+  const viewUrl = ${JSON.stringify(viewUrl)};
+  const ua = navigator.userAgent || "";
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const btn = document.getElementById('saveGallery');
+
+  if (!isIOS) btn.textContent = "📤 Paylaş (MP4)";
+
+  async function saveToGallery(){
+    try {
+      const r = await fetch(viewUrl, { mode:'cors' });
+      if(!r.ok) throw new Error('fetch failed: '+r.status);
+      const blob = await r.blob();
+      const file = new File([blob], 'mirror-video.mp4', { type: 'video/mp4' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Mirror Video', text: 'Videomu kaydet' });
+        return;
+      }
+      // Share yoksa: oynatıcıya düş
+      window.location.href = viewUrl;
+    } catch(e){
+      console.log('share/download fallback', e);
+      window.location.href = viewUrl;
+    }
+  }
+  btn.addEventListener('click', saveToGallery);
+})();
+</script>
+</body></html>`);
+  } catch (e) {
+    console.error('DL route error', e);
+    res.status(500).send('Video linki alınamadı');
+  }
+});
+
 // --------- Socket.IO ----------
 const allowedOrigin =
   process.env.ALLOWED_ORIGIN ||
@@ -205,121 +303,6 @@ io.on('connection', (socket) => {
     }
   });
 });
-
-// --------- DL (landing) sayfası ----------
-app.get('/dl', async (req, res) => {
-  const key = req.query.key;
-  if (!key) return res.status(400).send('key parametresi gerekli');
-
-  try {
-    // iOS tespiti
-    const ua = (req.headers['user-agent'] || '');
-    const isIOS = /iPhone|iPad|iPod/i.test(ua);
-
-    // 1) iOS için: attachment YOK (oynatıcıda açılır → uzun bas = 'Videoyu Kaydet')
-    const viewUrl = await new Promise((resolve, reject) => {
-      minioClient.presignedUrl(
-        'GET',
-        BUCKET,
-        key,
-        60 * 60, // 1 saat
-        {},      // header override yok
-        (err, url) => err ? reject(err) : resolve(url)
-      );
-    });
-
-    // 2) Diğer cihazlar için: attachment (indir)
-    const downloadUrl = await new Promise((resolve, reject) => {
-      minioClient.presignedUrl(
-        'GET',
-        BUCKET,
-        key,
-        60 * 60,
-        { 'response-content-disposition': 'attachment; filename="mirror-video.mp4"' },
-        (err, url) => err ? reject(err) : resolve(url)
-      );
-    });
-
-    // iOS kullanıcılarını TERCIHEN viewUrl'e yönlendirebilirsin, ama sayfada iki butonu da gösterelim:
-    res.send(`
-      <!doctype html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Videonu İndir</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>
-          :root { color-scheme: dark; }
-          body { background:#0b0f15; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; text-align:center; padding:24px; }
-          .btn { display:inline-block; margin:8px 6px; padding:14px 18px; font-size:18px; border-radius:12px; border:0; background:#1f6feb; color:#fff; text-decoration:none; }
-          .btn.secondary { background:#263042; }
-          video { max-width:100%; border-radius:12px; margin:18px 0; }
-          .muted { opacity:.85; font-size:14px; line-height:1.4; max-width:720px; margin:0 auto; }
-        </style>
-      </head>
-      <body>
-        <h2>Videon Hazır 🎉</h2>
-
-        <video src="${viewUrl}" controls playsinline></video>
-
-        <div style="margin:10px 0 2px;">
-          <a class="btn" href="${viewUrl}" target="_blank" rel="noopener">📺 iPhone'da Aç</a>
-          <a class="btn secondary" href="${downloadUrl}" target="_blank" rel="noopener">📥 Bilgisayarda/Android’de İndir</a>
-        </div>
-
-        <div style="margin-top:8px;">
-          <button class="btn secondary" id="shareFile" style="display:none;">📤 Paylaş / Kaydet (iOS)</button>
-        </div>
-
-        <p class="muted" style="margin-top:12px;">
-          iPhone: Üstteki “iPhone'da Aç” ile videoyu açın, <b>videonun üzerine uzun basın</b> → <b>“Videoyu Kaydet”</b>.
-          <br/>Bilgisayar/Android: “İndir” ile direkt indirin.
-        </p>
-
-        <script>
-          (function () {
-            const isIOS = ${JSON.stringify(isIOS)};
-            const viewUrl = ${JSON.stringify(viewUrl)};
-            const downloadUrl = ${JSON.stringify(downloadUrl)};
-            // Web Share Level 2 (dosya paylaşımı) destekleniyorsa iOS’ta gerçek dosyayı paylaşarak "Videoyu Kaydet" seçeneğini tetikleyebiliriz
-            const btn = document.getElementById('shareFile');
-
-            async function shareActualFile() {
-              try {
-                const r = await fetch(viewUrl, { mode: 'cors' });
-                if (!r.ok) throw new Error('fetch failed: ' + r.status);
-                const blob = await r.blob();
-                const file = new File([blob], 'mirror-video.mp4', { type: 'video/mp4' });
-                if (navigator.canShare) {
-                  await navigator.share({ files: [file], title: 'Mirror Video', text: 'Videomu kaydet' });
-                  console.log("if calıstı")
-                } else {
-                  // cihaz dosya paylaşımını desteklemiyorsa, normal aç
-                  location.href = viewUrl;
-                  console.log("else calıstı")
-                }
-              } catch (e) {
-                console.log('share failed', e);
-                location.href = viewUrl; // fallback
-              }
-            }
-
-            if (isIOS && navigator.share) {
-              // iOS + share destekli → butonu göster
-              btn.style.display = 'inline-block';
-              btn.addEventListener('click', shareActualFile);
-            }
-          })();
-        </script>
-      </body>
-      </html>
-    `);
-  } catch (e) {
-    console.error('DL route error', e);
-    res.status(500).send('Video linki alınamadı');
-  }
-});
-
 
 // --------- Error handlers ----------
 app.use((req, res) => {
