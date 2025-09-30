@@ -69,11 +69,12 @@
     });
 
     // Video hazır olunca GET link gelir:
-    socket.on('video-ready', ({ key, getUrl }) => {
-      statusEl.textContent = 'Video hazır: ' + key;
-      linkEl.textContent = getUrl;
-      renderQR(qrEl, getUrl);
+    socket.on('video-ready', ({ key, landingUrl }) => {
+    statusEl.textContent = 'Video hazır: ' + key;
+    linkEl.innerHTML = `<a href="${landingUrl}" target="_blank" rel="noopener">İndir sayfasını aç</a>`;
+    renderQR(qrEl, landingUrl); // QR artık indir sayfasına gidiyor
     });
+
   </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 

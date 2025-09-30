@@ -151,22 +151,22 @@ io.on('connection', (socket) => {
   });
 
   // Recorder “upload-done” deyince:
-  socket.on('upload-done', async ({ key }) => {
+// Recorder “upload-done” deyince:
+    socket.on('upload-done', async ({ key }) => {
     try {
-      const expires = 60 * 60 * 2;
-      const getUrl = await new Promise((resolve, reject) => {
-        minioClient.presignedUrl('GET', BUCKET, key, expires, (err, url) => {
-          if (err) return reject(err);
-          resolve(url);
-        });
-      });
-      if (moderatorSocketId) {
-        io.to(moderatorSocketId).emit('video-ready', { key, getUrl });
-      }
+        // Artık burada presigned GET üretmek yerine
+        // indir sayfası URL'sini veriyoruz:
+        const base = process.env.PUBLIC_BASE_URL || 'https://mirror.metasoftco.com';
+        const landingUrl = `${base}/dl?key=${encodeURIComponent(key)}`;
+
+        if (moderatorSocketId) {
+        io.to(moderatorSocketId).emit('video-ready', { key, landingUrl });
+        }
     } catch (e) {
-      console.error('upload-done error:', e);
+        console.error('upload-done error', e);
     }
-  });
+    });
+
 
   socket.on('disconnect', () => {
     if (socket.id === recorderSocketId) {
