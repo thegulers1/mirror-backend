@@ -45,84 +45,84 @@
     </div>
   </div>
 
-  <!-- Socket.IO -->
-  <script src="/socket.io/socket.io.js"></script>
-  <!-- QR kütüphanesi (lokal) -->
-  <script src="/lib/qrcode.min.js"></script>
+ <!-- ... head/body üstleri aynı kalsın -->
 
-  <script>
-    // QR lib yoksa dinamik olarak yüklemeyi dene (CDN fallback)
-    async function ensureQrLib() {
-      if (window.QRCode) return true;
-      try {
-        await new Promise((res, rej) => {
-          const s = document.createElement('script');
-          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-          s.onload = res; s.onerror = rej;
-          document.body.appendChild(s);
-        });
-        return !!window.QRCode;
-      } catch {
-        return false;
-      }
+<script src="/socket.io/socket.io.js"></script>
+<script src="/lib/qrcode.min.js"></script>
+
+<script>
+  // ===== Ayarlar =====
+  const DEFAULT_SEC = 15;
+
+  // ===== QR yardımcıları =====
+  function renderQR(el, url) {
+    el.innerHTML = '';
+    if (!window.QRCode) {
+      // Dinamik fallback (nadir durum)
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+      s.onload = () => new QRCode(el, { text: url, width: 280, height: 280, correctLevel: QRCode.CorrectLevel.M });
+      s.onerror = () => el.textContent = 'QR kütüphanesi yüklenemedi.';
+      document.body.appendChild(s);
+      return;
     }
+    new QRCode(el, { text: url, width: 280, height: 280, correctLevel: QRCode.CorrectLevel.M });
+  }
 
-    function renderQR(el, url) {
-      el.innerHTML = '';
-      new QRCode(el, { text: url, width: 280, height: 280, correctLevel: QRCode.CorrectLevel.M });
-    }
+  // ===== Elemanlar =====
+  const socket      = io({ path: '/socket.io' });
+  const startBtn    = document.getElementById('start');
+  const secInput    = document.getElementById('sec');
+  const statusEl    = document.getElementById('status');
+  const recStatusEl = document.getElementById('recStatus');
+  const qrEl        = document.getElementById('qr');
+  const linkEl      = document.getElementById('link');
 
-    const socket = io({ path: '/socket.io' });
+  let countdownTimer = null;
 
-    const startBtn   = document.getElementById('start');
-    const secInput   = document.getElementById('sec');
-    const statusEl   = document.getElementById('status');
-    const recStatusEl= document.getElementById('recStatus');
-    const qrEl       = document.getElementById('qr');
-    const linkEl     = document.getElementById('link');
-    const copyBtn    = document.getElementById('copy');
-    const hintEl     = document.getElementById('hint');
-
-    socket.on('connect', () => {
-      socket.emit('register', 'moderator');
-    });
-
-    socket.on('recorder-status', ({ ready }) => {
-      recStatusEl.textContent = 'Recorder: ' + (ready ? 'hazır' : 'BAĞLI DEĞİL');
-    });
-
-    startBtn.addEventListener('click', () => {
-      const sec = Math.max(3, Math.min(60, +secInput.value || 15));
-      statusEl.textContent = `Start gönderildi (${sec}s)...`;
-      socket.emit('moderator-start', { eventId: 'mirror-istanbul-2025', durationMs: sec * 1000 });
-    });
-
-    socket.on('video-ready', async ({ key, landingUrl }) => {
-      statusEl.textContent = 'Video hazır: ' + key;
-      linkEl.innerHTML = `<a class="link" href="${landingUrl}" target="_blank" rel="noopener">İndir sayfasını aç</a>`;
-      copyBtn.style.display = 'inline-block';
-      hintEl.style.display = 'block';
-
-      // QR kütüphanesi yüklü mü?
-      const ok = await ensureQrLib();
-      if (!ok) {
-        qrEl.textContent = 'QR kütüphanesi yüklenemedi. Linki kullanabilirsiniz.';
+  // ===== Yardımcı: geri sayım başlat =====
+  function startCountdown(totalSec) {
+    let left = totalSec;
+    startBtn.disabled = true;
+    startBtn.textContent = `Kayıt (${left})`;
+    countdownTimer = setInterval(() => {
+      left--;
+      if (left <= 0) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start';
         return;
       }
-      renderQR(qrEl, landingUrl);
-    });
+      startBtn.textContent = `Kayıt (${left})`;
+    }, 1000);
+  }
 
-    copyBtn.addEventListener('click', async () => {
-      const a = linkEl.querySelector('a');
-      if (!a) return;
-      try {
-        await navigator.clipboard.writeText(a.href);
-        copyBtn.textContent = 'Kopyalandı!';
-        setTimeout(() => copyBtn.textContent = 'Kopyala', 1500);
-      } catch {
-        alert('Kopyalanamadı. Linki seçip elle kopyalayın:\n' + a.href);
-      }
-    });
-  </script>
+  socket.on('connect', () => {
+    socket.emit('register', 'moderator');
+  });
+
+  socket.on('recorder-status', ({ ready }) => {
+    recStatusEl.textContent = 'Recorder: ' + (ready ? 'hazır' : 'BAĞLI DEĞİL');
+  });
+
+  startBtn.addEventListener('click', () => {
+    const sec = Math.max(3, Math.min(60, +secInput.value || DEFAULT_SEC));
+    statusEl.textContent = `Start gönderildi (${sec}s)...`;
+    socket.emit('moderator-start', { eventId: 'mirror-istanbul-2025', durationMs: sec * 1000 });
+    startCountdown(sec);
+    // önceki QR/linki temizleyelim
+    qrEl.textContent = 'Kayıt tamamlanınca QR gelecek...';
+    linkEl.textContent = '';
+  });
+
+  // Video hazır olunca indir sayfasına yönlenen URL gelir:
+  socket.on('video-ready', ({ key, landingUrl }) => {
+    statusEl.textContent = 'Video hazır: ' + key;
+    linkEl.innerHTML = `<a href="${landingUrl}" target="_blank" rel="noopener">İndir sayfasını aç</a>`;
+    renderQR(qrEl, landingUrl); // QR kesin çıkar (lokal kütüphane + fallback)
+  });
+</script>
+
 </body>
 </html>

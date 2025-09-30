@@ -152,20 +152,79 @@ io.on('connection', (socket) => {
 
   // Recorder “upload-done” deyince:
 // Recorder “upload-done” deyince:
-    socket.on('upload-done', async ({ key }) => {
-    try {
-        // Artık burada presigned GET üretmek yerine
-        // indir sayfası URL'sini veriyoruz:
-        const base = process.env.PUBLIC_BASE_URL || 'https://mirror.metasoftco.com';
-        const landingUrl = `${base}/dl?key=${encodeURIComponent(key)}`;
+const { execFile } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 
-        if (moderatorSocketId) {
-        io.to(moderatorSocketId).emit('video-ready', { key, landingUrl });
-        }
-    } catch (e) {
+// küçük yardımcılar
+function presignGet(key, expiresSec = 7200) {
+  return new Promise((resolve, reject) => {
+    minioClient.presignedUrl('GET', BUCKET, key, expiresSec, (err, url) => err ? reject(err) : resolve(url));
+  });
+}
+function presignPut(key, expiresSec = 300) {
+  return new Promise((resolve, reject) => {
+    minioClient.presignedUrl('PUT', BUCKET, key, expiresSec, (err, url) => err ? reject(err) : resolve(url));
+  });
+}
+async function downloadToTemp(url, ext) {
+  const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'mirror-')) + (ext || '');
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('download failed');
+  const file = fs.createWriteStream(dst);
+  await new Promise((res, rej) => { r.body.pipe(file); r.body.on('error', rej); file.on('finish', res); });
+  return dst;
+}
+async function uploadFromFile(putUrl, filePath, contentType) {
+  await fetch(putUrl, { method: 'PUT', headers: { 'Content-Type': contentType || 'application/octet-stream' }, body: fs.readFileSync(filePath) });
+}
+
+io.on('connection', (socket) => {
+  // ... register / moderator-start aynı kalsın ...
+
+    socket.on('upload-done', async ({ key }) => {
+        try {
+        // 1) Orijinali presigned GET ile indir
+        const srcGet = await presignGet(key, 600); // 10 dk
+        const srcPath = await downloadToTemp(srcGet, '.webm');
+
+        // 2) ffmpeg ile ayna + H.264 MP4 üret
+        const outPath = srcPath.replace(/\.webm$/i, '') + '-mirrored.mp4';
+        await new Promise((resolve, reject) => {
+            // -vf hflip = yatay ayna, -preset veryfast hız/kalite dengesi
+            // iOS uyumu için baseline/profile/level ayarlarını yumuşak tuttuk
+            const args = ['-y', '-i', srcPath, '-vf', 'hflip', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', 'faststart', outPath];
+            execFile('ffmpeg', args, (err) => err ? reject(err) : resolve());
+        });
+
+        // 3) MinIO'ya mp4'ü yükle (aynı klasör, yeni isim)
+        const mp4Key = key.replace(/\.webm$/i, '') + '-mirrored.mp4';
+        const putUrl = await presignPut(mp4Key, 600);
+        await uploadFromFile(putUrl, outPath, 'video/mp4');
+
+        // 4) Moderasyona indir sayfası ver (artık mp4 ana içerik)
+        const base = process.env.PUBLIC_BASE_URL || 'https://mirror-draw.metasoftco.com';
+        const landingUrl = `${base}/dl?key=${encodeURIComponent(mp4Key)}`;
+        if (moderatorSocketId) io.to(moderatorSocketId).emit('video-ready', { key: mp4Key, landingUrl });
+
+        // 5) temizlik
+        try { fs.unlinkSync(srcPath); } catch {}
+        try { fs.unlinkSync(outPath); } catch {}
+
+        } catch (e) {
         console.error('upload-done error', e);
-    }
+        // fallback: orijinal webm ile devam edelim
+        try {
+            const base = process.env.PUBLIC_BASE_URL || 'https://mirror-draw.metasoftco.com';
+            const landingUrl = `${base}/dl?key=${encodeURIComponent(key)}`;
+            if (moderatorSocketId) io.to(moderatorSocketId).emit('video-ready', { key, landingUrl });
+        } catch {}
+        }
     });
+
+    // ... disconnect aynı ...
+    });
+
 
 
   socket.on('disconnect', () => {
