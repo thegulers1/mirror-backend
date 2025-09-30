@@ -1,123 +1,217 @@
 <!doctype html>
-<html>
-
+<html lang="tr">
 <head>
   <meta charset="utf-8" />
-  <title>Mirror Recorder</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mirror Recorder (iPhone 720×1280)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <style>
-    body {
-      margin: 0;
-      background: #000;
-      color: #fff;
-      font-family: sans-serif;
-    }
-
-    .wrap {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-      padding: 12px;
-    }
-
+    :root { color-scheme: dark; }
+    body { margin:0; background:#000; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .wrap { display:flex; flex-direction:column; align-items:center; gap:12px; padding:16px; }
+    h2 { margin:10px 0 0; font-weight:600; }
     video {
       width: 100%;
-      max-width: 480px;
-      transform: scaleX(-1);
-      background: #000;
+      max-width: 420px; /* iPhone elde tutuşta yeterli */
+      aspect-ratio: 9/16;
+      background:#000;
+      transform: scaleX(-1);     /* Önizleme aynalı */
+      border-radius: 12px;
     }
-
-    button {
-      padding: 12px 16px;
-      font-size: 16px;
-      border-radius: 10px;
-      border: 0;
-    }
-
-    .status {
-      opacity: .8;
-    }
+    button { padding:12px 16px; font-size:16px; border-radius:10px; border:0; background:#1f6feb; color:#fff; }
+    .secondary { background:#263042; }
+    .status { opacity:.85; text-align:center; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+    .count { font-size:18px; letter-spacing:1px; }
   </style>
 </head>
-
 <body>
   <div class="wrap">
-    <h2>Kamera</h2>
+    <h2>Kamera (iPhone • 720×1280)</h2>
     <video id="preview" playsinline autoplay muted></video>
-    <button id="init">Kamerayı Hazırla</button>
+
+    <div class="row">
+      <button id="init">Kamerayı Hazırla</button>
+      <button id="test" class="secondary">Test Kaydı (5sn)</button>
+      <button id="stop" class="secondary" style="display:none;">Kaydı Durdur</button>
+    </div>
+
     <div class="status" id="status">Durum: bekleniyor</div>
+    <div class="status count" id="count"></div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = io({ path: '/socket.io' });
+    // ======== Yardımcılar
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    // ======== Elemanlar
     const videoEl = document.getElementById('preview');
     const initBtn = document.getElementById('init');
+    const testBtn = document.getElementById('test');
+    const stopBtn = document.getElementById('stop');
     const statusEl = document.getElementById('status');
+    const countEl  = document.getElementById('count');
+
+    // ======== Socket
+    const socket = io({ path: '/socket.io' });
+    socket.on('connect', () => socket.emit('register', 'recorder'));
 
     let stream = null;
     let recorder = null;
     let chunks = [];
-    let durationMsDefault = 15000; // 15 sn
+    let ticking = null;
 
-    socket.on('connect', () => {
-      socket.emit('register', 'recorder');
-    });
+    // iPhone için tercih edilen kayıt türleri (en üst en çok istenen)
+    const PREFERRED_TYPES = [
+      'video/mp4;codecs=h264',
+      'video/mp4',
+      'video/webm;codecs=vp9',
+      'video/webm'
+    ];
 
-    initBtn.addEventListener('click', async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }, // arka kamera
-          audio: true
-        });
-        videoEl.srcObject = stream;
-        statusEl.textContent = 'Durum: kamera hazır. Start bekleniyor 1 2 4...';
-        initBtn.style.display = 'none';
-      } catch (e) {
-        statusEl.textContent = 'Kamera erişimi reddedildi: ' + e;
+    // 720×1280 hedefli constraints listesi: önce exact, sonra ideal
+    const CONSTRAINT_SETS = [
+      { video: { facingMode:'environment', width:{exact:720}, height:{exact:1280}, aspectRatio:{exact: 720/1280}, frameRate:{ideal:30} }, audio:true },
+      { video: { facingMode:'environment', width:{exact:720}, height:{exact:1280}, frameRate:{ideal:30} }, audio:true },
+      { video: { facingMode:'environment', width:{ideal:720}, height:{ideal:1280}, aspectRatio:{ideal: 720/1280}, frameRate:{ideal:30} }, audio:true },
+      { video: { facingMode:'environment' }, audio:true }
+    ];
+
+    async function getCameraStream() {
+      let lastErr;
+      for (const c of CONSTRAINT_SETS) {
+        try {
+          const s = await navigator.mediaDevices.getUserMedia(c);
+          return s;
+        } catch (e) {
+          lastErr = e;
+        }
       }
-    });
+      throw lastErr || new Error('Kamera açılamadı');
+    }
 
-    socket.on('record-start', async (payload) => {
+    function pickMimeType() {
+      for (const t of PREFERRED_TYPES) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) {
+          return t;
+        }
+      }
+      return ''; // tarayıcı seçsin
+    }
+
+    function startCountdown(ms) {
+      stopCountdown();
+      const until = Date.now() + ms;
+      ticking = setInterval(() => {
+        const left = Math.max(0, until - Date.now());
+        countEl.textContent = 'Kalan: ' + Math.ceil(left/1000) + ' sn';
+        if (left <= 0) stopCountdown();
+      }, 200);
+    }
+    function stopCountdown() {
+      if (ticking) clearInterval(ticking);
+      ticking = null;
+      countEl.textContent = '';
+    }
+
+    async function startRecord(durationMs) {
       if (!stream) {
-        statusEl.textContent = 'Kamera hazır değil (dokunup izin verin).';
+        statusEl.textContent = 'Kamera hazır değil. "Kamerayı Hazırla" butonuna bas.';
         return;
       }
-      const duration = payload?.durationMs || durationMsDefault;
-      statusEl.textContent = 'Kayıt başladı (' + Math.round(duration / 1000) + ' sn)';
-
       chunks = [];
-      recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
-      recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+
+      const mimeType = pickMimeType();
+      const opts = { mimeType, videoBitsPerSecond: 4_000_000 }; // ~4 Mbps
+      try {
+        recorder = new MediaRecorder(stream, opts);
+      } catch (e) {
+        // tarayıcı reddederse mimeType boş bırakıp tekrar dene
+        recorder = new MediaRecorder(stream);
+      }
+
+      recorder.ondataavailable = (e) => e.data && e.data.size && chunks.push(e.data);
       recorder.onstop = async () => {
+        stopBtn.style.display = 'none';
+        stopCountdown();
         statusEl.textContent = 'Kayıt bitti. Yükleniyor...';
-        const blob = new Blob(chunks, { type: 'video/webm' });
 
-        // Sunucudan PUT pre-signed URL al
-        const resp = await fetch('/api/presign/put', {
-          method: 'POST'
-        });
-        const { key, putUrl } = await resp.json();
+        // Dosya türünü belirle
+        const usedType = recorder.mimeType || mimeType || 'video/mp4';
+        const isMp4 = usedType.includes('mp4');
 
-        // MinIO'ya yükle (Content-Type şart)
-        await fetch(putUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'video/webm' },
-          body: blob
-        });
+        const blob = new Blob(chunks, { type: usedType });
+        const ext  = isMp4 ? 'mp4' : 'webm';
 
-        // Moderasyona haber ver
-        socket.emit('upload-done', { key });
-        statusEl.textContent = 'Yüklendi: ' + key;
+        try {
+          // PUT URL al (iPhone için mp4 istiyoruz)
+          const pres = await fetch('/api/presign/put?ext=' + encodeURIComponent(ext), { method:'POST' });
+          if (!pres.ok) throw new Error('presign put failed');
+          const { key, putUrl } = await pres.json();
+
+          // Yükle
+          const up = await fetch(putUrl, { method:'PUT', headers:{ 'Content-Type': blob.type || (isMp4?'video/mp4':'video/webm') }, body: blob });
+          if (!up.ok) throw new Error('upload failed: '+up.status);
+
+          // Moderasyona haber ver
+          socket.emit('upload-done', { key });
+          statusEl.textContent = `Yüklendi ✓ (${key})`;
+        } catch (e) {
+          console.error(e);
+          statusEl.textContent = 'Yükleme hatası: ' + e.message;
+        }
       };
 
       recorder.start();
+      stopBtn.style.display = 'inline-block';
+      startCountdown(durationMs);
+
+      statusEl.textContent = `Kayıt başladı (${Math.round(durationMs/1000)} sn)`;
       setTimeout(() => {
         if (recorder && recorder.state === 'recording') recorder.stop();
-      }, duration);
+      }, durationMs);
+    }
+
+    // ======== UI: Init & Test
+    initBtn.addEventListener('click', async () => {
+      try {
+        stream = await getCameraStream();
+        videoEl.srcObject = stream;
+
+        // Gerçek gelen çözünürlüğü göster (debug)
+        await sleep(50);
+        const vTrack = stream.getVideoTracks()[0];
+        const s = vTrack.getSettings && vTrack.getSettings();
+        statusEl.textContent = `Kamera hazır • ${s?.width || '?'}×${s?.height || '?'} @${s?.frameRate || '?'} • Start bekleniyor`;
+        initBtn.style.display = 'none';
+      } catch (e) {
+        statusEl.textContent = 'Kamera reddedildi/uyumsuz: ' + e.message;
+      }
+    });
+
+    testBtn.addEventListener('click', () => startRecord(5000));
+    stopBtn.addEventListener('click', () => { if (recorder && recorder.state === 'recording') recorder.stop(); });
+
+    // ======== Moderatör startı
+    socket.on('record-start', (payload) => {
+      const duration = Math.max(3000, Math.min(60000, +(payload?.durationMs || 15000)));
+      startRecord(duration);
+    });
+
+    // ======== iOS ekran kapanması/oda değişimi vs. için güvenlik
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && recorder && recorder.state === 'recording') {
+        try { recorder.stop(); } catch {}
+      }
+    });
+    window.addEventListener('beforeunload', () => {
+      if (recorder && recorder.state === 'recording') {
+        try { recorder.stop(); } catch {}
+      }
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
     });
   </script>
 </body>
-
 </html>
