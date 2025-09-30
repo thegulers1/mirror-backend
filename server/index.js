@@ -290,11 +290,13 @@ app.get('/dl', async (req, res) => {
                 if (!r.ok) throw new Error('fetch failed: ' + r.status);
                 const blob = await r.blob();
                 const file = new File([blob], 'mirror-video.mp4', { type: 'video/mp4' });
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                if (navigator.canShare) {
                   await navigator.share({ files: [file], title: 'Mirror Video', text: 'Videomu kaydet' });
+                  console.log("if calıstı")
                 } else {
                   // cihaz dosya paylaşımını desteklemiyorsa, normal aç
                   location.href = viewUrl;
+                  console.log("else calıstı")
                 }
               } catch (e) {
                 console.log('share failed', e);
