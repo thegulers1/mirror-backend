@@ -24,6 +24,7 @@
     video {
       width: 100%;
       max-width: 480px;
+      aspect-ratio: 9/16;
       transform: scaleX(-1);
       background: #000;
     }
@@ -104,7 +105,7 @@
       statusEl.textContent = 'Kayıt başladı (' + Math.round(duration / 1000) + ' sn)';
 
       chunks = [];
-      recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
       recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       recorder.onstop = async () => {
         statusEl.textContent = 'Kayıt bitti. Yükleniyor...';
