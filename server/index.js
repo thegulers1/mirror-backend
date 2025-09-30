@@ -207,69 +207,32 @@ io.on('connection', (socket) => {
 });
 
 // --------- DL (landing) sayfası ----------
+// --------- DL (landing) sayfası ----------
 app.get('/dl', async (req, res) => {
   const key = req.query.key;
   if (!key) return res.status(400).send('key parametresi gerekli');
 
-  try {
-    // video için presigned GET link
-    const getUrl = await new Promise((resolve, reject) => {
-      minioClient.presignedUrl('GET', BUCKET, key, 60 * 60, (err, url) =>
-        err ? reject(err) : resolve(url)
-      );
-    });
+  const getUrl = await new Promise((resolve, reject) => {
+    minioClient.presignedUrl('GET', BUCKET, key, 60 * 60, (err, url) =>
+      err ? reject(err) : resolve(url)
+    );
+  });
 
-    // basit HTML sayfası
-    res.send(`
-      <!doctype html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Videonu İndir</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>
-          body { background:#0b0f15; color:#fff; font-family:sans-serif; text-align:center; padding:20px; }
-          video { max-width:100%; border-radius:12px; margin:20px 0; }
-          button { background:#1f6feb; color:#fff; padding:14px 20px; font-size:18px; border:0; border-radius:12px; }
-          a { display:inline-block; margin-top:12px; color:#1f6feb; }
-        </style>
-      </head>
-      <body>
-        <h2>Videon Hazır 🎉</h2>
-        <video src="${getUrl}" controls playsinline></video>
-        <br/>
-        <button onclick="downloadVideo()">📥 Videoyu İndir</button>
-        <br/>
-        <a href="${getUrl}" download="mirror-video.mp4">Alternatif: Direkt indir</a>
-
-        <script>
-          async function downloadVideo() {
-            const url = "${getUrl}";
-            if (navigator.share) {
-              try {
-                await navigator.share({
-                  title: "Mirror Video",
-                  text: "Videonu indir",
-                  url
-                });
-              } catch (e) {
-                console.log("Paylaşım iptal:", e);
-                window.location.href = url;
-              }
-            } else {
-              // fallback: normal indirme
-              window.location.href = url;
-            }
-          }
-        </script>
-      </body>
-      </html>
-    `);
-  } catch (e) {
-    console.error('DL route error', e);
-    res.status(500).send('Video linki alınamadı');
+  const ua = req.headers['user-agent'] || '';
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    // iOS: direkt dosya linkine yönlendir
+    return res.redirect(getUrl);
   }
+
+  // diğer cihazlar: html sayfası
+  res.send(`
+    <!doctype html><html><body>
+    <h2>Videon Hazır 🎉</h2>
+    <a href="${getUrl}" target="_blank" rel="noopener">📥 Videoyu İndir</a>
+    </body></html>
+  `);
 });
+
 
 // --------- Error handlers ----------
 app.use((req, res) => {
