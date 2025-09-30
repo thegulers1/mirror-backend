@@ -5,7 +5,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 # ffmpeg (mirror/encode için şart)
-RUN apk add --no-cache ffmpeg@7.1.1
+RUN apk add --no-cache ffmpeg
 
 COPY . .
 ENV NODE_ENV=production
