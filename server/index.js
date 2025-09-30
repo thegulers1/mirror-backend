@@ -58,6 +58,7 @@ app.post('/api/presign/put', async (req, res) => {
     res.json({ key, putUrl });
   } catch (e) {
     console.error('presign put failed:', e);
+    console.log('presign put failed:', e);
     res.status(500).json({ error: 'presign put failed' });
   }
 });
@@ -78,6 +79,7 @@ app.get('/api/presign/get', async (req, res) => {
     res.json({ getUrl });
   } catch (e) {
     console.error('presign get failed:', e);
+    console.log('presign get failed:', e);
     res.status(500).json({ error: 'presign get failed' });
   }
 });
@@ -236,7 +238,7 @@ io.on('connection', (socket) => {
         execFile('ffmpeg', args, (err, stdout, stderr) => {
           // ffmpeg çıktısını logla (hata durumunda teşhis kolaylığı için)
           if (err) {
-            console.error('ffmpeg error', { message: err.message, code: err.code, signal: err.signal, stderr: String(stderr) });
+            console.log('ffmpeg error', { message: err.message, code: err.code, signal: err.signal, stderr: String(stderr) });
             reject(err);
             return;
           }
@@ -261,8 +263,6 @@ io.on('connection', (socket) => {
       try { fs.unlinkSync(srcPath); } catch {}
       try { fs.unlinkSync(outPath); } catch {}
     } catch (e) {
-      console.error('upload-done error', e);
-      // fallback: orijinal webm gönder
       console.log('upload-done error', e);
       
       const base = process.env.PUBLIC_BASE_URL || 'https://mirror-draw.metasoftco.com';
