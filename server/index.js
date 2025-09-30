@@ -203,40 +203,28 @@ io.on("connection", (socket) => {
 				}
 
 				const args = [
-					"-y",
-					"-noautorotate",
-					"-i",
-					srcPath, // 0:v (+ 0:a?)
-					"-loop",
-					"1",
-					"-i",
-					framePath, // 1:v (PNG)
-					"-filter_complex",
-					"[0:v]hflip,format=rgba[base];" +
-						"[1:v][base]scale2ref=flags=lanczos[fg][base2];" +
-						"[fg]format=rgba[fg2];" +
-						"[base2][fg2]overlay=0:0[out]",
-					"-map",
-					"[out]",
-					"-map",
-					"0:a?",
-					"-c:v",
-					"libx264",
-					"-preset",
-					"veryfast",
-					"-crf",
-					"23",
-					"-c:a",
-					"aac",
-					"-b:a",
-					"128k",
-					"-pix_fmt",
-					"yuv420p",
-					"-movflags",
-					"faststart",
-					"-shortest",
-					outPath,
-				];
+          '-y',
+          '-noautorotate',
+          '-i', srcPath,                    // 0:v (+0:a?)
+          '-framerate', '60', '-loop', '1', // önemli
+          '-i', framePath,                  // 1:v PNG
+          '-filter_complex',
+          [
+            '[0:v]hflip,format=rgba[base]',
+            '[1:v][base]scale2ref=flags=lanczos[fg][base2]',
+            '[fg]format=rgba[fg2]',
+            '[base2][fg2]overlay=shortest=1:eof_action=pass:x=0:y=0[out]',
+          ].join(';'),
+          '-map', '[out]',
+          '-map', '0:a?',
+          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+          '-c:a', 'aac', '-b:a', '128k',
+          '-pix_fmt', 'yuv420p',
+          '-movflags', 'faststart',
+          '-shortest',
+          outPath,
+        ];
+        
 
 				console.log("ffmpeg spawn", { args });
 
