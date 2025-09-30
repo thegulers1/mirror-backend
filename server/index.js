@@ -199,7 +199,7 @@ io.on('connection', (socket) => {
   });
 
   // upload-done: convert webm -> mirrored mp4
-  socket.on('upload-done', async ({ key, crop }) => {
+  socket.on('upload-done', async ({ key }) => {
     try {
       // indir webm
       const srcGet = await presignGet(key, 600);
@@ -214,38 +214,26 @@ io.on('connection', (socket) => {
         } else {
           console.log('cerceve3.png bulundu:', framePath);
         }
-
-        // filtreleri hazırla: hflip + (varsa) crop + overlay
-        // Not: Frame yeniden boyutlandırma yapılmıyor, macOS için transpose da yok
-        let filterComplex;
-
-        if (process.env.NODE_ENV === 'development') {
-          filterComplex = `transpose=2`;
-        }
-
+      
         const args = [
-          "-i",
-          srcPath,
-          "-i",
-          framePath,
-          "-filter_complex",
-          filterComplex,
-          "-map",
-          "0:a?",
-          "-map_metadata",
-          "-1",
-          "-c:v",
-          "libx264",
-          "-crf",
-          "14",
-          "-preset",
-          "slow",
-          "-c:a",
-          "aac",
-          "-b:a",
-          "128k",
-          "-movflags",
-          "frag_keyframe+empty_moov",
+          '-y',
+          '-i', srcPath,                 // 0: video
+          '-loop', '1', '-i', framePath, // 1: PNG
+          '-filter_complex',
+          
+          // 1) Videoyu çevirip RGBA'ya çevir
+          // 2) PNG'yi videonun boyutuna göre ölçekle ve RGBA yap
+          // 3) Overlay uygula
+          '[0:v]hflip,format=rgba[base];' +
+          '[1:v][base]scale2ref=flags=lanczos[fg][base2];' +
+          '[fg]format=rgba[fg2];' +
+          '[base2][fg2]overlay=0:0[out]',
+          '-map', '[out]', '-map', '0:a?',
+          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+          '-c:a', 'aac', '-b:a', '128k',
+          '-pix_fmt', 'yuv420p',
+          '-movflags', 'faststart',
+          '-shortest',
           outPath,
         ];
       
