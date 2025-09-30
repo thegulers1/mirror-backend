@@ -46,7 +46,7 @@ app.get('/health', (_, res) => res.send('ok'));
 // --------- Pre-signed PUT ----------
 app.post('/api/presign/put', async (req, res) => {
   try {
-    const ext = (req.query.ext || 'webm').toString();
+    const ext = (req.query.ext || 'mp4').toString();
     const key = `${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${ext}`;
     const expires = 60 * 5;
 
@@ -199,14 +199,14 @@ io.on('connection', (socket) => {
   });
 
   // upload-done: convert webm -> mirrored mp4
-  socket.on('upload-done', async ({ key }) => {
+  socket.on('upload-done', async ({ key, extension }) => {
     try {
       // indir webm
       const srcGet = await presignGet(key, 600);
-      const srcPath = await downloadToTemp(srcGet, '.webm');
+      const srcPath = await downloadToTemp(srcGet, `.${extension}`);
 
       // ffmpeg ile mirrored + frame overlay mp4 üret
-      const outPath = srcPath.replace(/\.webm$/i, '') + '-mirrored.mp4';
+      const outPath = srcPath.replace(/\.${extension}$/i, '') + '-mirrored.mp4';
       await new Promise((resolve, reject) => {
         const framePath = path.resolve(__dirname, '..', 'cerceve3.png');
         if (!fs.existsSync(framePath)) {
@@ -275,7 +275,7 @@ io.on('connection', (socket) => {
       });
 
       // mp4'ü MinIO'ya yükle
-      const mp4Key = key.replace(/\.webm$/i, '') + '-mirrored.mp4';
+      const mp4Key = key.replace(/\.${extension}$/i, '') + '-mirrored.mp4';
       const putUrl = await presignPut(mp4Key, 600);
       await uploadFromFile(putUrl, outPath, 'video/mp4');
 

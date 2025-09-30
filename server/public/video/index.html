@@ -132,8 +132,9 @@
           body: blob
         });
 
+        const extension = mimeType.split('/')[1];
         // Moderasyona haber ver
-        socket.emit('upload-done', { key });
+        socket.emit('upload-done', { key, extension });
         statusEl.textContent = 'Yüklendi: ' + key;
       };
 
