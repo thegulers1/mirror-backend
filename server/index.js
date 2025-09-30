@@ -202,17 +202,37 @@ io.on('connection', (socket) => {
       const srcGet = await presignGet(key, 600);
       const srcPath = await downloadToTemp(srcGet, '.webm');
 
-      // ffmpeg ile mirrored mp4 üret
+      // ffmpeg ile mirrored + frame overlay mp4 üret
       const outPath = srcPath.replace(/\.webm$/i, '') + '-mirrored.mp4';
       await new Promise((resolve, reject) => {
+        const framePath = path.resolve(__dirname, '..', 'cerceve3.png');
+        // Çerçeve dosyası var mı kontrol et
+        if (!fs.existsSync(framePath)) {
+          console.warn('cerceve3.png bulunamadı:', framePath);
+        }else {
+          console.log('cerceve3.png bulundu:', framePath);
+        }
         const args = [
-          '-y', '-i', srcPath,
-          '-vf', 'hflip',
+          '-y',
+          '-i', srcPath,                 // 0: video
+          '-loop', '1', '-i', framePath, // 1: PNG
+          '-filter_complex',
+          // 1) Videoyu çevirip RGBA'ya çevir
+          // 2) PNG'yi videonun boyutuna göre ölçekle ve RGBA yap
+          // 3) Overlay uygula
+          '[0:v]hflip,format=rgba[base];' +
+          '[1:v][base]scale2ref=flags=lanczos[fg][base2];' +
+          '[fg]format=rgba[fg2];' +
+          '[base2][fg2]overlay=0:0[out]',
+          '-map', '[out]', '-map', '0:a?',
           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+          '-c:a', 'aac', '-b:a', '128k',
           '-pix_fmt', 'yuv420p',
           '-movflags', 'faststart',
+          '-shortest',
           outPath,
         ];
+        
         // ffmpeg çağrısını ve argümanlarını logla
         console.log('ffmpeg run', { args });
         execFile('ffmpeg', args, (err, stdout, stderr) => {
@@ -245,6 +265,8 @@ io.on('connection', (socket) => {
     } catch (e) {
       console.error('upload-done error', e);
       // fallback: orijinal webm gönder
+      console.log('upload-done error', e);
+      
       const base = process.env.PUBLIC_BASE_URL || 'https://mirror-draw.metasoftco.com';
       const landingUrl = `${base}/dl?key=${encodeURIComponent(key)}`;
       if (moderatorSocketId) {

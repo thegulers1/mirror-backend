@@ -68,9 +68,25 @@
     initBtn.addEventListener('click', async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }, // arka kamera
+          video: {
+            facingMode: 'environment', // arka kamera
+            width: { ideal: 720 },
+            height: { ideal: 1280 },
+            aspectRatio: { ideal: 9 / 16 }
+          },
           audio: true,
         });
+        // yorum: Cihaz destekliyorsa 720x1280 zorlamayı dene
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack?.applyConstraints) {
+          try {
+            await videoTrack.applyConstraints({
+              width: { ideal: 720 },
+              height: { ideal: 1280 },
+              aspectRatio: { ideal: 9 / 16 }
+            });
+          } catch {}
+        }
         videoEl.srcObject = stream;
         statusEl.textContent = 'Durum: kamera hazır. Start bekleniyor 1 2 4...';
         initBtn.style.display = 'none';
