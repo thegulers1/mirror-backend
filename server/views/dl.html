@@ -119,10 +119,15 @@
                 try {
                     // MinIO’dan MP4’ü blob olarak çek
                     const r = await fetch(viewUrl);
+                    console.log("viewUrl", viewUrl);
+                    console.log("r", r);
+                    
                     if (!r.ok) throw new Error('fetch failed: ' + r.status);
                     const blob = await r.blob();
                     const fileExt = blob.type.split("/")[1];
                     const file = new File([blob], `${Date.now()}.${fileExt}`, { type: blob.type });
+                    console.log('file', file);
+                    
 
                     if (navigator.share) {
                         const res = await navigator.share({ files: [file], title: 'Mirror Video' });
