@@ -121,10 +121,12 @@
                     const r = await fetch(viewUrl);
                     if (!r.ok) throw new Error('fetch failed: ' + r.status);
                     const blob = await r.blob();
-                    const file = new File([blob], 'mirror-video.mp4', { type: 'video/mp4' });
+                    const fileExt = blob.type.split("/")[1];
+                    const file = new File([blob], `${Date.now()}.${fileExt}`, { type: blob.type });
 
-                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                        await navigator.share({ files: [file], title: 'Mirror Video', text: 'Videomu kaydet' });
+                    if (navigator.share) {
+                        const res = await navigator.share({ files: [file], title: 'Mirror Video' });
+                        console.log('share result', res);
                         return;
                     }
                     // Share yoksa en garantili yol: oynatıcıya gönder (uzun bas → Videoyu Kaydet)
