@@ -234,9 +234,9 @@ io.on('connection', (socket) => {
 
       // moderasyona mp4 landing url gönder
       const base = process.env.PUBLIC_BASE_URL || 'https://mirror-draw.metasoftco.com';
-      const landingUrl = `${base}/dl?key=${encodeURIComponent(mp4Key)}`;
+      const landingUrl = `${base}/dl?key=${encodeURIComponent(key)}`;
       if (moderatorSocketId) {
-        io.to(moderatorSocketId).emit('video-ready', { key: mp4Key, landingUrl });
+        io.to(moderatorSocketId).emit('video-ready', { key: key, landingUrl });
       }
 
       // cleanup
